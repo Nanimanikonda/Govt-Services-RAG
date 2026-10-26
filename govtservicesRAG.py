@@ -64,10 +64,10 @@ def govt_services(message, history):
     return response.content
 
 import gradio as gr
-with gr.Blocks(theme=gr.Theme.from_hub("harsh8001/True-terminal")) as demo:
-    gr.ChatInterface(
-        fn=govt_services,
-        title="🤖Govt Services RAG🤖",
-        description="Got stuck with Govt. Services! I Can Help You"
-    )
+
+demo=gr.ChatInterface(
+    fn=govt_services,
+    title="🤖 Govt Services RAG 🤖",
+    description="Got stuck with Govt. Services! I Can Help You"
+)
 demo.launch(share=True)
