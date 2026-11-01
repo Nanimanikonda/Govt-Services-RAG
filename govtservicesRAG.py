@@ -45,29 +45,41 @@ Question:
 
 Answer:
 """)
+from gtts import gTTS
+import tempfile
 
 def govt_services(message, history):
-    question = message.strip().lower()
-    greetings = ["hi", "hello", "hey", "good morning", "good afternoon", "good evening"]
-    thanks = ["thanks", "thank you", "ok thank you", "okay thank you", "thanks a lot"]
-    endings = ["bye", "goodbye", "see you", "talk to you later"]
-    if question in greetings:
-        return "Hello! How can I help you with Indian Government Services today? (e.g., Passports, PAN, Aadhaar, Driving Licences, Voter IDs, EPFO, or AP State Certificates)"
-    if question in thanks:
-        return "You're welcome! Feel free to ask if you have any more questions about government forms, fees, or procedures."
-    if question in endings:
-        return "Goodbye! Have a great day."
-    results = vectorDB.similarity_search(message, k=4)
-    context = "\n\n".join(doc.page_content for doc in results)
-    messages = prompt.invoke({"context": context, "input": message})
-    response = llm.invoke(messages)
-    return response.content
+    results=vectorDB.similarity_search(message,k=4)
+    context="\n\n".join(doc.page_content for doc in results)
+    messages=prompt.invoke({
+        "context": context,
+        "input": message
+    })
+    response=llm.invoke(messages)
+    answer=response.content
+    voice=gTTS(text=answer, lang="en")
+    audio_file=tempfile.NamedTemporaryFile(
+        delete=False,
+        suffix=".mp3"
+    )
+    audio_path=audio_file.name
+    audio_file.close()
+    voice.save(audio_path)
+    return answer, audio_path
 
 import gradio as gr
 
-demo=gr.ChatInterface(
-    fn=govt_services,
-    title="🤖 Govt Services RAG 🤖",
-    description="Got stuck with Govt. Services! I Can Help You"
-)
+with gr.Blocks() as demo:
+    audio_output=gr.Audio(
+        label="LLM Voice Response",
+        render=False,
+        autoplay=False
+    )
+    chat=gr.ChatInterface(
+        fn=govt_services,
+        title="🤖 Govt Services RAG 🤖",
+        description="Ask questions about Indian Government Services",
+        additional_outputs=[audio_output]
+    )
+    audio_output.render()
 demo.launch(share=True)
