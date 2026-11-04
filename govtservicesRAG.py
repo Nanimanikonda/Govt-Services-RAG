@@ -1,4 +1,6 @@
 from langchain_community.document_loaders import PyPDFLoader
+from gtts import gTTS
+import tempfile
 
 loader=PyPDFLoader('C:\\Users\\manik\\OneDrive\\Desktop\\Govt services Guide\\Everyday Government Services Guide – India.pdf')
 document=loader.load()
@@ -22,10 +24,26 @@ vectorDB=Chroma.from_documents(
 )
 
 from langchain_ollama import ChatOllama
-
 llm=ChatOllama(model="llama3.2:3b",temperature=0)
 
+from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
+
+classifier_prompt = ChatPromptTemplate.from_template("""
+Classify the user's question into exactly one category:
+
+government:
+Questions about Indian government services, schemes, eligibility,
+documents, application procedures, fees, portals and government policies.
+
+general:
+Questions about all other topics.
+
+Return only: government or general.
+
+Question: {input}
+""")
+classifier_chain=classifier_prompt|llm|StrOutputParser()
 
 prompt=ChatPromptTemplate.from_template("""
 You are an expert, empathetic assistant specialized in Indian Government Services.
@@ -45,41 +63,66 @@ Question:
 
 Answer:
 """)
-from gtts import gTTS
-import tempfile
+chain1=prompt|llm|StrOutputParser()
+
+general_prompt = ChatPromptTemplate.from_template("""
+You are a helpful general-purpose AI assistant.
+Answer the user's question clearly and accurately using your general knowledge.
+If you are uncertain about something, mention that instead of inventing facts.
+Question: {input}
+Answer:
+""")
+chain2=general_prompt|llm|StrOutputParser()
 
 def govt_services(message, history):
-    results=vectorDB.similarity_search(message,k=4)
-    context="\n\n".join(doc.page_content for doc in results)
-    messages=prompt.invoke({
-        "context": context,
-        "input": message
-    })
-    response=llm.invoke(messages)
-    answer=response.content
-    voice=gTTS(text=answer, lang="en")
-    audio_file=tempfile.NamedTemporaryFile(
-        delete=False,
-        suffix=".mp3"
-    )
-    audio_path=audio_file.name
-    audio_file.close()
-    voice.save(audio_path)
-    return answer, audio_path
+    intent = classifier_chain.invoke({"input": message}).strip().lower()
+
+    if intent == "government":
+        results = vectorDB.similarity_search(message, k=4)
+
+        context = "\n\n".join(
+            doc.page_content for doc in results
+        )
+
+        answer = chain1.invoke({
+            "context": context,
+            "input": message
+        })
+
+    else:
+        answer = chain2.invoke({"input": message})
+
+    try:
+        audio_path = tempfile.NamedTemporaryFile(
+            delete=False,
+            suffix=".mp3"
+        ).name
+
+        tts = gTTS(text=answer, lang="en")
+        tts.save(audio_path)
+
+        return answer, audio_path
+
+    except Exception as e:
+        print("Text-to-speech error:", e)
+        return answer, None
+
 
 import gradio as gr
 
 with gr.Blocks() as demo:
-    audio_output=gr.Audio(
-        label="LLM Voice Response",
-        render=False,
-        autoplay=False
+
+    audio_output = gr.Audio(
+        label="Listen to the response",
+        type="filepath",
+        autoplay=True
     )
-    chat=gr.ChatInterface(
+
+    chat = gr.ChatInterface(
         fn=govt_services,
+        additional_outputs=[audio_output],
         title="🤖 Govt Services RAG 🤖",
-        description="Ask questions about Indian Government Services",
-        additional_outputs=[audio_output]
+        description="Ask questions about Indian Government Services"
     )
-    audio_output.render()
+
 demo.launch(share=True)
